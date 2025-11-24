@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Protected Proxy Config</title>
+<style>
+body { font-family: Arial, sans-serif; padding: 20px; }
+pre { background: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }
+</style>
+</head>
+<body>
+<h2>Ваш защищённый конфиг готов</h2>
+<p>Подождите, идет подготовка...</p>
+<pre id="output">Loading...</pre>
+
+<script>
+async function loadConfig() {
+    try {
+        // 1. Загрузка зашифрованного файла
+        const response = await fetch('config.enc');
+        const encData = await response.json();
+
+        // 2. AES ключ (обфусцирован через токен)
+        const keyHex = "b4f927e6d3a1c09fb2e584e2c7d91f0e5d8c7a3f92b14e3d3c93eafbc91f6ad3";
+        const ivHex  = encData.iv;
+
+        const key = new Uint8Array(keyHex.match(/.{2}/g).map(h=>parseInt(h,16)));
+        const iv  = new Uint8Array(ivHex.match(/.{2}/g).map(h=>parseInt(h,16)));
+
+        const ct = Uint8Array.from(atob(encData.ciphertext), c => c.charCodeAt(0));
+        const tag = Uint8Array.from(atob(encData.tag), c => c.charCodeAt(0));
+
+        const combined = new Uint8Array(ct.length + tag.length);
+        combined.set(ct);
+        combined.set(tag, ct.length);
+
+        // 3. Расшифровка
+        const cryptoKey = await crypto.subtle.importKey(
+            "raw", key, {name:"AES-GCM"}, false, ["decrypt"]
+        );
+        const decrypted = await crypto.subtle.decrypt({name:"AES-GCM", iv: iv}, cryptoKey, combined);
+        const configText = new TextDecoder().decode(decrypted);
+
+        // 4. Определяем платформу
+        const ua = navigator.userAgent;
+        let output = "";
+
+        if(/iPhone|iPad|iPod/i.test(ua)) {
+            output = "Shadowrocket import ready:\n" + configText;
+        } else if(/Android/i.test(ua)) {
+            output = "v2rayNG / sing-box config:\n" + configText;
+        } else {
+            output = "PC / macOS (Clash / sing-box):\n" + configText;
+        }
+
+        document.getElementById('output').textContent = output;
+
+    } catch(e) {
+        document.getElementById('output').textContent = "Ошибка: не удалось загрузить конфиг.\n" + e;
+    }
+}
+
+loadConfig();
+</script>
+</body>
+</html>
